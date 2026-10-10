@@ -2,7 +2,6 @@
 
 A standalone PyTorch implementation of the GNBM core: shared neural basis functions, full-basis context gating, training, ensemble prediction, and contribution decomposition.
 
-This repository contains only the core implementation and an in-memory synthetic example. It does not include real data, dataset loading or preprocessing, feature engineering, hyperparameter search, nested validation, experiment management, trained weights, or manuscript results.
 
 ## Running the example
 
