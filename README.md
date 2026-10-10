@@ -1,26 +1,26 @@
 # Gated Neural Basis Model
 
-独立的 PyTorch GNBM 核心实现：共享基函数、完整基函数门控、训练、集成预测及贡献分解。
+A standalone PyTorch implementation of the GNBM core: shared neural basis functions, full-basis context gating, training, ensemble prediction, and contribution decomposition.
 
-本目录仅包含核心代码和内存中的合成输入示例，不包含真实数据、数据集读取与预处理、特征构建、搜索、嵌套验证、实验管理、模型权重或论文结果。
+This repository contains only the core implementation and an in-memory synthetic example. It does not include real data, dataset loading or preprocessing, feature engineering, hyperparameter search, nested validation, experiment management, trained weights, or manuscript results.
 
-## 运行
+## Running the example
 
-已验证环境为 Python 3.12.13、PyTorch 2.5.1、NumPy 2.4.6。请在具备这些依赖的环境中，从项目根目录直接运行，无需安装本项目：
+The implementation has been verified with Python 3.12.13, PyTorch 2.5.1, and NumPy 2.4.6. Use an environment with these dependencies and run the following command from the repository root. Installing this repository as a package is unnecessary.
 
 ```powershell
 python -B -m examples.synthetic_demo
 ```
 
-示例使用 CPU 和随机生成的输入数组，不读取或写出数据文件，不包含标准化等数据集处理实现。为便于演示，训练上限为 20 轮；可加 `--epochs 5` 快速运行。预处理后的特征矩阵及 log1p 目标由调用方提供。
+The example runs on CPU with randomly generated input arrays. It neither reads nor writes data files and does not implement dataset preprocessing such as standardization. The demonstration uses a maximum of 20 training epochs; add `--epochs 5` for a shorter run. Callers supply their own preprocessed feature matrices and log1p-transformed targets.
 
-## 核心接口
+## Core interfaces
 
-`GNBM(feature_names, parameters=None)` 构建模型。每个标量特征通过共享基函数网络；隐藏层使用 Linear、LayerNorm、GELU、Dropout，输出层不归一化。门控读取完整输入与展平后的基函数，对拼接输入执行 LayerNorm，再生成各特征、各基函数的 logits。
+`GNBM(feature_names, parameters=None)` constructs the model. Each scalar feature passes through the same basis network. Hidden blocks contain Linear, LayerNorm, GELU, and Dropout; the basis output layer has no normalization. The gate receives the complete input and flattened basis values, applies LayerNorm to their concatenation, and produces logits for every feature and basis channel.
 
-softmax 沿基函数维度计算，门控乘数为 `(1-alpha) + alpha*B*q`，每个特征的乘数均值为 1。门控输出层零初始化，温度和强度为固定超参数。网络输出为各特征贡献之和加全局偏置，网络内部不截断。
+Softmax is applied along the basis dimension. The gate multiplier is `(1-alpha) + alpha*B*q`, with a channel mean of 1 for each feature. The gate output layer is initialized to zero. Temperature and strength are fixed hyperparameters. The raw network prediction is the sum of feature contributions and a global bias; the network does not clip its output.
 
-`fit_gnbm(...)` 接受特征矩阵及已转换的 log1p 目标，返回模型、最佳轮次、验证评分和训练历史。默认设置为 AdamW、学习率 `1e-3`、权重衰减 `1e-5`、批大小 `256`、最多 `240` 轮、早停耐心 `48` 轮和梯度范数上限 `0.5`。默认种子为 `1729, 2718, 31415`，优化使用 float32 MSE。
+`fit_gnbm(...)` accepts feature matrices and already-transformed log1p targets, returning the model, best epoch, validation score, and training history. Defaults are AdamW, learning rate `1e-3`, weight decay `1e-5`, batch size `256`, at most `240` epochs, early-stopping patience `48`, and a gradient norm limit of `0.5`. Default training seeds are `1729, 2718, 31415`; optimization uses float32 MSE.
 
 ```python
 from gnbm import fit_gnbm, predict_ensemble
@@ -33,8 +33,8 @@ model, best_epoch, validation_mae, history = fit_gnbm(
 predicted_log1p, predicted_response = predict_ensemble([model], X_test)
 ```
 
-输入必须有限且特征顺序一致。早停使用原始输出 MAE，恢复最佳状态；历史字段 `validation_mae_log1p_raw` 记录此指标。返回的 `validation_mae` 使用保留模型的非负截断预测。省略验证集时按指定轮数训练，评分为 `None`。默认结构仅为可运行示例，并非稿件最终最优配置。
+Inputs must be finite, with consistent feature ordering. Early stopping uses MAE on raw log1p predictions and restores the best state. The history field `validation_mae_log1p_raw` records this metric. The returned `validation_mae` instead uses nonnegative-clipped predictions from the retained model. Without validation inputs, training runs for the specified number of epochs and returns `None` for the validation score. The default architecture is a runnable example, not the manuscript's final optimal configuration.
 
-`predict_ensemble(...)` 先平均各模型的原始 log1p 输出，再截断为非负值并执行 `expm1`，返回两种尺度。
+`predict_ensemble(...)` first averages each model's raw log1p prediction, then clips the average to nonnegative values and applies `expm1`. It returns predictions on both scales.
 
-`model(x, return_aux=True)` 提供门控、特征贡献、同一拟合模型关闭门控后的 `ungated_feature_contributions`，以及两者之差 `net_gating_adjustments`。贡献求和加全局偏置可重构原始 log1p 输出；关闭门控的诊断不等于重新训练 NBM，也不表示因果效应。
+`model(x, return_aux=True)` exposes gates, feature contributions, `ungated_feature_contributions` from the same fitted model with gate multipliers set to 1, and their difference, `net_gating_adjustments`. Summing feature contributions and adding the global bias reconstructs the raw log1p output. The ungated diagnostic is not a separately retrained NBM and does not represent causal effects.
